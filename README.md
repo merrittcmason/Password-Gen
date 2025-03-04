@@ -4,7 +4,7 @@
 
 ---
 
-<img width="458" alt="Screenshot 2025-02-20 at 5 41 46 PM" src="https://github.com/user-attachments/assets/b29c38fc-d907-43d9-8c38-abd1a2340c43" />
+<img width="462" alt="Screenshot 2025-03-03 at 7 36 20 PM" src="https://github.com/user-attachments/assets/a42d4ace-8046-4669-915e-9cea9cf3e854" />
 
 ---
 
@@ -12,51 +12,78 @@
 
 - **Generate secure passwords** with customizable options such as length and character types (uppercase, lowercase, numbers, and symbols).
 - **Copy passwords** to the clipboard.
-- **Save passwords** directly to 1Password via CLI integration.
+- **Save passwords directly** to 1Password via CLI integration.
+- **Dark Mode** support for a customizable viewing experience.
+- **Website Field** to include an optional URL when saving credentials.
+- **Real-Time Notifications** for successful saves and errors.
+- **Enhanced UI Elements** with improved styling and integrated icons.
 - Built using modern technologies: **React, Electron, Vite,** and **TailwindCSS**.
 
 ## Requirements
 
 Before you begin, ensure you have installed:
-- Node.js (v16 or later) and npm
+- Node.js (v22.13.1 or later) and npm
 - Git
 - 1Password CLI
 
 ## Install Requirements
 
 Install Node.js (v16 or later) and npm:
-```brew install node```
+```sh
+brew install node
+```
 
 Install Git:
-```brew install git```
+```sh
+brew install git
+```
 
 Install 1Password CLI:
-```brew install –cask 1password/tap/1password-cli```
+```sh
+brew install –cask 1password/tap/1password-cli
+```
 
 ## Installation
 
 Clone the repository:
 
-```git clone https://github.com/your-username/your-repo.git```
-```cd your-repo```
+```sh
+git clone https://github.com/your-username/your-repo.git
+```
+
+Navigate to your cloned repository location:
+
+```sh
+cd your-repo
+```
 
 Install dependencies:
 
-```npm install```
+```sh
+npm install
+```
 
 ## Development
 
 To run the application in development mode with live reload support, use:
 
-```npm run electron:dev```
+```sh
+npm run electron:dev
+```
+To run application from a browser:
+```sh
+npm run dev
+```
 
-This launches the Vite development server and opens the app in an Electron window.
+This launches the Vite development server and opens the app in an **Electron window** or **browser window**.
 
 ## Packaging
 
 To build and package the application into a standalone executable, use:
 
-```npm run electron:build```
+```sh
+npm run electron:build
+```
 
 The packaged application will be available in the release folder.
 

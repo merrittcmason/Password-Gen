@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
-import { Copy, Check, Save, Shield } from 'lucide-react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { Copy, RefreshCw, Shield, Moon, Sun, Globe, Check, AlertCircle } from 'lucide-react';
 
-// Access electron IPC renderer
+// Import ipcRenderer the old way (as used in your old working code)
 const { ipcRenderer } = window.require('electron');
 
 interface PasswordOptions {
@@ -9,29 +9,62 @@ interface PasswordOptions {
   uppercase: boolean;
   lowercase: boolean;
   numbers: boolean;
-  special: boolean;
+  symbols: boolean;
+}
+
+interface Notification {
+  type: 'success' | 'error';
+  message: string;
 }
 
 function App() {
   const [password, setPassword] = useState('');
-  const [copied, setCopied] = useState(false);
   const [title, setTitle] = useState('');
   const [username, setUsername] = useState('');
+  const [website, setWebsite] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [notification, setNotification] = useState<Notification | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
   const [options, setOptions] = useState<PasswordOptions>({
     length: 16,
     uppercase: true,
     lowercase: true,
     numbers: true,
-    special: true,
+    symbols: true,
   });
+
+  // Initialize dark mode from system preference
+  useEffect(() => {
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      setDarkMode(true);
+    }
+  }, []);
+
+  // Apply dark mode class to body
+  useEffect(() => {
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
+  // Clear notification after 5 seconds
+  useEffect(() => {
+    if (notification) {
+      const timer = setTimeout(() => {
+        setNotification(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification]);
 
   const generatePassword = useCallback(() => {
     const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const lowercase = 'abcdefghijklmnopqrstuvwxyz';
     const numbers = '0123456789';
-    const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+    const symbols = '!@#$%^&*()_+-=[]{}|;:,.<>?';
 
     let chars = '';
     let result = '';
@@ -49,9 +82,9 @@ function App() {
       chars += numbers;
       result += numbers[Math.floor(Math.random() * numbers.length)];
     }
-    if (options.special) {
-      chars += special;
-      result += special[Math.floor(Math.random() * special.length)];
+    if (options.symbols) {
+      chars += symbols;
+      result += symbols[Math.floor(Math.random() * symbols.length)];
     }
 
     // Fill the rest randomly
@@ -59,177 +92,268 @@ function App() {
       result += chars[Math.floor(Math.random() * chars.length)];
     }
 
-    // Shuffle the result
-    result = result
-      .split('')
-      .sort(() => Math.random() - 0.5)
-      .join('');
-
+    // Shuffle the password
+    result = result.split('').sort(() => Math.random() - 0.5).join('');
     setPassword(result);
   }, [options]);
 
-  const handleCopy = async () => {
+  const copyToClipboard = async () => {
     try {
-      await ipcRenderer.invoke('copy-to-clipboard', password);
+      await navigator.clipboard.writeText(password);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
       console.error('Failed to copy password:', err);
+      setNotification({
+        type: 'error',
+        message: 'Failed to copy to clipboard'
+      });
     }
   };
 
-  const handleSave = async () => {
-    if (!title) return;
+  const toggleDarkMode = () => {
+    setDarkMode(!darkMode);
+  };
+
+  // Updated save function: uses ipcRenderer.invoke to actually call the 1Password CLI integration
+  const saveToOnePassword = async () => {
+    if (!title) {
+      setNotification({
+        type: 'error',
+        message: 'Title is required'
+      });
+      return;
+    }
+
+    if (!password) {
+      setNotification({
+        type: 'error',
+        message: 'Please generate a password first'
+      });
+      return;
+    }
 
     setSaving(true);
-    setSaveError('');
 
     try {
       const result = await ipcRenderer.invoke('save-to-1password', {
         title,
         username,
         password,
+        website,
       });
-
       if (!result.success) {
         throw new Error(result.error);
       }
+      setNotification({
+        type: 'success',
+        message: 'Saved to 1Password successfully'
+      });
 
       // Clear form on success
       setTitle('');
       setUsername('');
+      setWebsite('');
       generatePassword();
-    } catch (error) {
-      setSaveError(error.message);
+    } catch (error: any) {
+      setNotification({
+        type: 'error',
+        message: error.message || 'Failed to save to 1Password'
+      });
     } finally {
       setSaving(false);
     }
   };
 
+  useEffect(() => {
+    generatePassword();
+  }, [generatePassword]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
-        <div className="flex items-center gap-2 mb-6">
-          <Shield className="w-8 h-8 text-blue-600" />
-          <h1 className="text-2xl font-bold text-gray-900">Password Generator</h1>
-        </div>
-
-        {/* Password Display */}
-        <div className="relative mb-6">
-          <input
-            type="text"
-            readOnly
-            value={password}
-            className="w-full bg-gray-50 border border-gray-200 rounded-lg py-3 px-4 pr-12 font-mono text-lg"
-          />
-          <button
-            onClick={handleCopy}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-2 hover:bg-gray-100 rounded-md transition-colors"
-            title="Copy to clipboard"
-          >
-            {copied ? (
-              <Check className="w-5 h-5 text-green-600" />
-            ) : (
-              <Copy className="w-5 h-5 text-gray-600" />
-            )}
-          </button>
-        </div>
-
-        {/* Length Slider */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Password Length: {options.length}
-          </label>
-          <input
-            type="range"
-            min="1"
-            max="25"
-            value={options.length}
-            onChange={(e) =>
-              setOptions((prev) => ({ ...prev, length: +e.target.value }))
-            }
-            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-          />
-        </div>
-
-        {/* Character Options */}
-        <div className="space-y-3 mb-6">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Include Characters:
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { key: 'uppercase', label: 'Uppercase (A-Z)' },
-              { key: 'lowercase', label: 'Lowercase (a-z)' },
-              { key: 'numbers', label: 'Numbers (0-9)' },
-              { key: 'special', label: 'Special (!@#$%)' },
-            ].map(({ key, label }) => (
-              <label
-                key={key}
-                className="flex items-center space-x-2 text-sm text-gray-600"
-              >
-                <input
-                  type="checkbox"
-                  checked={options[key as keyof PasswordOptions]}
-                  onChange={(e) =>
-                    setOptions((prev) => ({ ...prev, [key]: e.target.checked }))
-                  }
-                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-                <span>{label}</span>
-              </label>
-            ))}
+    <div className={`min-h-screen transition-colors duration-200 ${darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-blue-50 to-gray-100'} py-12 px-4 sm:px-6 lg:px-8`}>
+      <div className={`max-w-md mx-auto ${darkMode ? 'bg-gray-800' : 'bg-white'} rounded-xl shadow-lg overflow-hidden transition-colors duration-200`}>
+        <div className="px-8 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center">
+              <Shield className={`h-8 w-8 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+              <h1 className={`ml-3 text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Password Generator</h1>
+            </div>
+            <button
+              onClick={toggleDarkMode}
+              className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300 hover:bg-gray-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'} focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors`}
+              aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
           </div>
-        </div>
 
-        {/* 1Password Integration Fields */}
-        <div className="space-y-4 mb-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Title
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g., Gmail Password"
-              className="w-full border border-gray-200 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Username (optional)
-            </label>
-            <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g., username@example.com"
-              className="w-full border border-gray-200 rounded-lg py-2 px-3 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-          {saveError && (
-            <div className="text-red-600 text-sm">{saveError}</div>
+          {/* Notification */}
+          {notification && (
+            <div className={`mb-4 p-3 rounded-md ${
+              notification.type === 'success'
+                ? darkMode ? 'bg-green-800 text-green-100' : 'bg-green-100 text-green-800'
+                : darkMode ? 'bg-red-800 text-red-100' : 'bg-red-100 text-red-800'
+            } flex items-center`}>
+              {notification.type === 'success'
+                ? <Check className="h-5 w-5 mr-2" />
+                : <AlertCircle className="h-5 w-5 mr-2" />}
+              <span>{notification.message}</span>
+            </div>
           )}
-        </div>
 
-        {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            onClick={generatePassword}
-            className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Generate New
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!title || saving}
-            className="flex items-center justify-center gap-2 flex-1 bg-gray-800 text-white py-2 px-4 rounded-lg hover:bg-gray-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Save className="w-4 h-4" />
-            {saving ? 'Saving...' : 'Save to 1Password'}
-          </button>
+          {/* Password Display */}
+          <div className="relative mb-6">
+            <div className="flex">
+              <input
+                type="text"
+                readOnly
+                value={password}
+                className={`block w-full px-4 py-3 rounded-l-lg ${
+                  darkMode
+                    ? 'bg-gray-700 border-gray-600 text-white focus:ring-blue-400 focus:border-blue-400'
+                    : 'bg-gray-50 border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-blue-500'
+                } border border-r-0 transition-colors`}
+              />
+              <button
+                onClick={copyToClipboard}
+                className={`px-4 py-2 ${
+                  darkMode
+                    ? 'bg-blue-500 hover:bg-blue-600'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                } text-white rounded-r-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors`}
+                title="Copy to clipboard"
+              >
+                {copied ? 'Copied!' : <Copy className="h-5 w-5" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Length Slider */}
+          <div className="mb-6">
+            <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2 transition-colors`}>
+              Password Length: {options.length}
+            </label>
+            <input
+              type="range"
+              min="1"
+              max="25"
+              value={options.length}
+              onChange={(e) => setOptions({ ...options, length: parseInt(e.target.value) })}
+              className={`w-full h-2 ${
+                darkMode ? 'bg-gray-700' : 'bg-gray-200'
+              } rounded-lg appearance-none cursor-pointer accent-blue-600 transition-colors`}
+            />
+          </div>
+
+          {/* Character Options */}
+          <div className="space-y-3 mb-6">
+            <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-2 transition-colors`}>
+              Include Characters:
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { key: 'uppercase', label: 'Uppercase (A-Z)' },
+                { key: 'lowercase', label: 'Lowercase (a-z)' },
+                { key: 'numbers', label: 'Numbers (0-9)' },
+                { key: 'symbols', label: 'Symbols (!@#$...)' },
+              ].map(({ key, label }) => (
+                <div key={key} className="flex items-center">
+                  <input
+                    type="checkbox"
+                    checked={options[key as keyof PasswordOptions]}
+                    onChange={(e) => setOptions({ ...options, [key]: e.target.checked })}
+                    className={`h-4 w-4 text-blue-600 focus:ring-blue-500 ${
+                      darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-300'
+                    } rounded transition-colors`}
+                  />
+                  <label className={`ml-2 text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} transition-colors`}>{label}</label>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Save Form */}
+          <div className="space-y-4 mb-6">
+            <div>
+              <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-1 transition-colors`}>
+                Title
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g., Gmail Password"
+                className={`block w-full px-3 py-2 border ${
+                  darkMode
+                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-400 focus:border-blue-400'
+                    : 'border-gray-300 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500'
+                } rounded-md shadow-sm transition-colors`}
+              />
+            </div>
+            <div>
+              <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-1 transition-colors`}>
+                Username (optional)
+              </label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="username@example.com"
+                className={`block w-full px-3 py-2 border ${
+                  darkMode
+                    ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-400 focus:border-blue-400'
+                    : 'border-gray-300 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500'
+                } rounded-md shadow-sm transition-colors`}
+              />
+            </div>
+            <div>
+              <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'} mb-1 transition-colors`}>
+                Website
+              </label>
+              <div className="flex">
+                <div className={`inline-flex items-center px-3 rounded-l-md border border-r-0 ${
+                  darkMode ? 'bg-gray-600 border-gray-600 text-gray-300' : 'bg-gray-50 border-gray-300 text-gray-500'
+                } transition-colors`}>
+                  <Globe className="h-4 w-4" />
+                </div>
+                <input
+                  type="text"
+                  value={website}
+                  onChange={(e) => setWebsite(e.target.value)}
+                  placeholder="https://example.com"
+                  className={`block w-full px-3 py-2 border ${
+                    darkMode
+                      ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-400 focus:border-blue-400'
+                      : 'border-gray-300 placeholder-gray-500 focus:ring-blue-500 focus:border-blue-500'
+                  } rounded-r-md shadow-sm transition-colors`}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex space-x-3">
+            <button
+              onClick={generatePassword}
+              className={`flex-1 flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
+                darkMode ? 'bg-blue-500 hover:bg-blue-600' : 'bg-blue-600 hover:bg-blue-700'
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors`}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Generate New
+            </button>
+            <button
+              onClick={saveToOnePassword}
+              disabled={saving}
+              className={`flex-1 flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium ${
+                darkMode
+                  ? saving ? 'bg-gray-600 text-gray-300' : 'text-blue-300 bg-gray-700 hover:bg-gray-600'
+                  : saving ? 'bg-blue-300 text-white' : 'text-blue-700 bg-blue-100 hover:bg-blue-200'
+              } focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors`}
+            >
+              {saving ? 'Saving...' : 'Save to 1Password'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

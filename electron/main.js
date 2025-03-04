@@ -16,14 +16,11 @@ function createWindow() {
     width: 480,
     height: 800,
     webPreferences: {
-      // For production, consider setting nodeIntegration to false and using a preload script.
       nodeIntegration: true,
       contextIsolation: false
     },
     resizable: false
   });
-
-  // Load the Vite dev server URL in development or the local index.html file in production
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
@@ -33,45 +30,26 @@ function createWindow() {
 }
 
 app.whenReady().then(createWindow);
-
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') { app.quit(); }
 });
-
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) { createWindow(); }
 });
 
-// Handle clipboard operations
 ipcMain.handle('copy-to-clipboard', async (_, text) => {
   clipboard.writeText(text);
   return true;
 });
 
-// Handle 1Password CLI operations
-ipcMain.handle('save-to-1password', async (_, { title, username, password }) => {
+ipcMain.handle('save-to-1password', async (_, { title, username, password, website }) => {
   try {
-    // Extend the environment PATH to include common directories where 'op' might be installed
-    const env = {
-      ...process.env,
-      PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin"
-    };
-
-    // Dynamically locate the 1Password CLI using 'which op' with the extended PATH
+    const env = { ...process.env, PATH: process.env.PATH + ":/usr/local/bin:/opt/homebrew/bin" };
     const { stdout: opPath } = await execAsync('which op', { env });
     const opExecutable = opPath.trim();
-    if (!opExecutable) {
-      throw new Error("1Password CLI not found. Please ensure it is installed and in your PATH.");
-    }
-
-    // Build the command using assignment syntax for username and password
-    const command = `"${opExecutable}" item create --category=login --title="${title}" username="${username}" password="${password}"`;
-
-    // Execute the command with the extended environment
+    if (!opExecutable) { throw new Error("1Password CLI not found. Please ensure it is installed and in your PATH."); }
+    let command = `"${opExecutable}" item create --category=login --title="${title}" username="${username}" password="${password}"`;
+    if (website && website.trim() !== "") { command += ` url="${website}"`; }
     const { stdout } = await execAsync(command, { env });
     return { success: true, data: stdout };
   } catch (error) {
